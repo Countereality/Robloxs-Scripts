@@ -1,0 +1,189 @@
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+local Window = Library.CreateLib("SkullFucker’s Cheat", "SynapseDark") -- Red-themed
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = game:GetService("Workspace").CurrentCamera
+local TweenService = game:GetService("TweenService")
+
+-- Customize Kavo UI to be red
+local function setRedTheme()
+    for _, frame in pairs(game:GetService("CoreGui"):GetDescendants()) do
+        if frame:IsA("Frame") or frame:IsA("TextLabel") or frame:IsA("TextButton") then
+            if frame.BackgroundColor3 == Color3.fromRGB(35, 35, 35) then
+                frame.BackgroundColor3 = Color3.fromRGB(100, 0, 0) -- Dark red
+            elseif frame.BackgroundColor3 == Color3.fromRGB(25, 25, 25) then
+                frame.BackgroundColor3 = Color3.fromRGB(80, 0, 0) -- Darker red
+            end
+            if frame:IsA("TextLabel") or frame:IsA("TextButton") then
+                frame.TextColor3 = Color3.fromRGB(255, 0, 0) -- Bright red text
+            end
+        end
+    end
+end
+spawn(setRedTheme)
+
+-- Settings
+local aimbotEnabled = true -- Auto-enabled
+local aimPart = "Head"
+local teamCheck = true
+local fovRadius = 150
+
+local silentAimEnabled = true -- Auto-enabled
+local silentAimFov = 100 -- Silent Aim FOV radius
+local silentAimCircle = Drawing.new("Circle")
+silentAimCircle.Radius = silentAimFov
+silentAimCircle.Color = Color3.fromRGB(255, 0, 0) -- Red circle
+silentAimCircle.Thickness = 2
+silentAimCircle.Filled = false
+silentAimCircle.Visible = true
+silentAimCircle.Position = UserInputService:GetMouseLocation()
+
+local espEnabled = false
+local espColor = Color3.fromRGB(255, 0, 0) -- Red ESP
+local espTransparency = 0.6
+
+-- GUI setup
+local Main = Window:NewTab("Main")
+local MainSection = Main:NewSection("SkullFucker’s Arsenal Cheat")
+MainSection:NewToggle("ESP", "Toggle enemy ESP boxes", function(state)
+    espEnabled = state
+    Library:Notify("ESP " .. (state and "Enabled" or "Disabled"))
+end)
+
+-- Update Silent Aim circle position
+RunService.RenderStepped:Connect(function()
+    silentAimCircle.Position = UserInputService:GetMouseLocation()
+end)
+
+-- Check if player is valid
+local function isValidTarget(player)
+    if player == LocalPlayer or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild(aimPart) then
+        return false
+    end
+    if teamCheck and player.Team == LocalPlayer.Team then
+        return false
+    end
+    return player.Character.Humanoid.Health > 0
+end
+
+-- Get closest enemy
+local function getClosestEnemy(fov)
+    local closestEnemy = nil
+    local closestDistance = fov
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if isValidTarget(player) then
+            local aimPartPos = player.Character[aimPart].Position
+            local screenPos, onScreen = Camera:WorldToViewportPoint(aimPartPos)
+            if onScreen then
+                local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestEnemy = player
+                end
+            end
+        end
+    end
+
+    return closestEnemy
+end
+
+-- Aimbot logic
+RunService.RenderStepped:Connect(function()
+    if aimbotEnabled then
+        local target = getClosestEnemy(fovRadius)
+        if target then
+            local aimPartPos = target.Character[aimPart].Position
+            local screenPos = Camera:WorldToViewportPoint(aimPartPos)
+            mousemoverel((screenPos.X - UserInputService:GetMouseLocation().X) * 0.2, (screenPos.Y - UserInputService:GetMouseLocation().Y) * 0.2)
+        end
+    end
+end)
+
+-- Silent Aim logic
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local args = {...}
+    if silentAimEnabled and getnamecallmethod() == "FindPartOnRayWithIgnoreList" and self == workspace then
+        local target = getClosestEnemy(silentAimFov)
+        if target then
+            local aimPartPos = target.Character[aimPart].Position
+            args[1] = Ray.new(Camera.CFrame.Position, (aimPartPos - Camera.CFrame.Position).Unit * 1000)
+        end
+    end
+    return oldNamecall(self, unpack(args))
+end)
+
+-- ESP logic
+local function createESP(player)
+    if player == LocalPlayer or not isValidTarget(player) then return end
+
+    local box = Drawing.new("Square")
+    box.Thickness = 2
+    box.Color = espColor
+    box.Transparency = espTransparency
+    box.Filled = false
+
+    local nameText = Drawing.new("Text")
+    nameText.Size = 16
+    nameText.Color = espColor
+    nameText.Outline = true
+    nameText.Center = true
+
+    local distanceText = Drawing.new("Text")
+    distanceText.Size = 16
+    distanceText.Color = espColor
+    distanceText.Outline = true
+    distanceText.Center = true
+
+    local function updateESP()
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not isValidTarget(player) or not espEnabled then
+            box.Visible = false
+            nameText.Visible = false
+            distanceText.Visible = false
+            return
+        end
+
+        local rootPart = player.Character.HumanoidRootPart
+        local head = player.Character:FindFirstChild("Head")
+        if not head then return end
+
+        local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+        if onScreen then
+            local scale = 1 / (screenPos.Z * math.tan(math.rad(Camera.FieldOfView * 0.5)) * 2) * 1000
+            local width, height = 4 * scale, 6 * scale
+            box.Size = Vector2.new(width, height)
+            box.Position = Vector2.new(screenPos.X - width / 2, screenPos.Y - height / 2)
+            box.Visible = true
+
+            nameText.Text = player.Name
+            nameText.Position = Vector2.new(screenPos.X, screenPos.Y - height / 2 - 20)
+            nameText.Visible = true
+
+            local distance = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+            distanceText.Text = math.floor(distance) .. " studs"
+            distanceText.Position = Vector2.new(screenPos.X, screenPos.Y + height / 2)
+            distanceText.Visible = true
+        else
+            box.Visible = false
+            nameText.Visible = false
+            distanceText.Visible = false
+        end
+    end
+
+    RunService.RenderStepped:Connect(updateESP)
+end
+
+-- Initialize ESP for all players
+for _, player in pairs(Players:GetPlayers()) do
+    createESP(player)
+end
+Players.PlayerAdded:Connect(createESP)
+
+-- Ensure script works in Arsenal
+if game.GameId ~= 111958650 then
+    Library:Notify("This script is for Arsenal only!", 5)
+end
